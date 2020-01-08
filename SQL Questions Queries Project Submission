@@ -1,0 +1,236 @@
+----------------------------------------------------------------------------------------------------------------------------
+
+-- Question set 1
+
+----------------------------------------------------------------------------------------------------------------------------
+
+---Question 1 - What are the rental categories preferences? 
+
+-- We want to understand more about the movies that families are watching. 
+-- The following categories are considered family movies: Animation, Children, Classics, Comedy, Family and Music.
+-- Create a query that lists each movie, the film category it is classified in, and the number of times it has been rented out.
+
+-- Query for question 1:
+
+SELECT film_title, 
+       category_name,
+       rental_count
+FROM 
+(SELECT  DISTINCT(a.title) film_title, 
+	c.name category_name,
+	COUNT(e.rental_id) OVER(PARTITION BY a.title ORDER by a.title) rental_count
+FROM film as a
+	JOIN film_category as b
+	    ON a.film_id = b.film_id
+	JOIN category as c
+	    ON c.category_id = b.category_id     
+	JOIN inventory as d
+            ON a.film_id = d.film_id
+        JOIN rental as e
+            ON d.inventory_id = e.inventory_id) as TempTable
+WHERE category_name = 'Animation'
+      OR category_name = 'Children'
+      OR category_name = 'Classics'
+      OR category_name = 'Comedy'
+      OR category_name = 'Family'
+      OR category_name = 'Music'
+ORDER BY category_name, film_title
+
+----------------------------------------------------------------------------------------------------------------------------
+
+-- Question 2- Which are the rental times per category? 
+
+-- Provide a table with the movie titles and divide them into 4 levels (first_quarter, second_quarter, third_quarter, and final_quarter) based on the quartiles 
+-- (25%, 50%, 75%) of the rental duration for movies across all categories? Make sure to also indicate the category that these family-friendly movies fall into.
+
+-- Query for question 2:
+
+SELECT title, 
+       category_name,
+       rental_duration,
+       NTILE(4) OVER (PARTITION BY rental_duration) AS standard_quartile
+FROM 
+(SELECT a.title title, 
+	c.name category_name,
+	a.rental_duration rental_duration
+FROM film as a
+	JOIN film_category as b
+	    ON a.film_id = b.film_id
+	JOIN category as c
+	    ON c.category_id = b.category_id) as TempTable
+WHERE category_name = 'Animation'
+      OR category_name = 'Children'
+      OR category_name = 'Classics'
+      OR category_name = 'Comedy'
+      OR category_name = 'Family'
+      OR category_name = 'Music'
+ORDER BY rental_duration
+
+----------------------------------------------------------------------------------------------------------------------------
+
+-- Question 3 - What are the rental time preferences?
+
+-- Provide a table with the family-friendly film category, each of the quartiles, and the corresponding count of movies within each 
+-- combination of film category for each corresponding rental duration category. 
+
+-- Query for question 3:
+
+SELECT category_name,
+       standard_quartile,
+       COUNT(*) count
+FROM 
+(SELECT title, 
+       category_name,
+       rental_duration,
+       NTILE(4) OVER (ORDER BY rental_duration) AS standard_quartile
+FROM 
+(SELECT a.title title, 
+	c.name category_name,
+	a.rental_duration rental_duration
+FROM film as a
+	JOIN film_category as b
+	    ON a.film_id = b.film_id
+	JOIN category as c
+	    ON c.category_id = b.category_id) as TempTable
+WHERE category_name = 'Animation'
+      OR category_name = 'Children'
+      OR category_name = 'Classics'
+      OR category_name = 'Comedy'
+      OR category_name = 'Family'
+      OR category_name = 'Music'
+ORDER BY rental_duration) as TempTable2
+GROUP BY category_name, standard_quartile
+ORDER BY category_name, standard_quartile
+
+----------------------------------------------------------------------------------------------------------------------------
+
+-- Question set 2
+
+----------------------------------------------------------------------------------------------------------------------------
+
+-- Question 1 - What are the number of rentals per store?
+
+-- Write a query that returns the store ID for the store, the year and month and the number of rental orders each store has fulfilled for that month. 
+-- Your table should include a column for each of the following: year, month, store ID and count of rental orders fulfilled during that month. 
+
+-- Query for question 1:
+
+SELECT  DATE_PART('month', a.rental_date) Rental_month,
+	DATE_PART('year', a.rental_date) Rental_year,
+	c.store_id store_ID,
+	COUNT(*) Count_rentals
+FROM rental as a
+    JOIN staff as b
+	ON a.staff_id = b.staff_id
+    JOIN store as c
+	ON b.store_id = c.store_id
+GROUP BY c.store_id, Rental_month, Rental_year
+ORDER BY Count_rentals DESC
+
+----------------------------------------------------------------------------------------------------------------------------
+
+-- Question 2 - What are the preferences for customers that spend more?
+
+-- Can you write a query to capture the customer name, month and year of payment, and total payment amount for each month by the top 
+-- 10 paying customers?
+
+-- Query for question 2:
+
+WITH bas AS 
+   (SELECT a.customer_id,
+           SUM(a.amount) AS total_amount
+    FROM payment a
+    JOIN customer b
+        ON a.customer_id = b.customer_id
+    GROUP BY 1
+    ORDER BY 2 DESC
+    LIMIT 10)
+
+SELECT bas2.fecha fecha,
+       bas2.full_name full_name,
+       bas2.pay_countpermonth,
+       bas2.pay_amount pay_amount
+FROM bas
+JOIN
+    (SELECT DISTINCT(pay_year || '-' || pay_month) as fecha,
+            customer_id,
+	    full_name,
+	    COUNT(*) pay_countpermonth,
+	    SUM(pay_amount) AS pay_amount
+     FROM 
+     (SELECT DATE_PART('year', a.payment_date) pay_year,
+	     DATE_PART('month', a.payment_date) pay_month,
+	     b.first_name || ' ' || b.last_name full_name,
+	     a.customer_id,
+	     a.amount pay_amount
+     FROM payment as a
+         JOIN customer as b
+	     ON a.customer_id = b.customer_id) as tab1
+      GROUP BY 1, 2,3) AS bas2
+ON bas.customer_id = bas2.customer_id
+ORDER BY full_name, fecha
+    
+----------------------------------------------------------------------------------------------------------------------------
+
+-- Question 3 - What are the differences for customers that spend more?
+
+-- Query to find out differences across monthly payments during 2007, for the 10 costumers that pay more every month
+
+-- Query for question 3:
+
+WITH temp1 AS
+(WITH bas AS 
+   (SELECT a.customer_id,
+           SUM(a.amount) AS total_amount
+    FROM payment a
+    JOIN customer b
+        ON a.customer_id = b.customer_id
+    GROUP BY 1
+    ORDER BY 2 DESC
+    LIMIT 10)
+
+SELECT ROW_NUMBER() OVER(ORDER BY bas2.full_name) AS RowNumber,
+       bas2.fecha fecha,
+       bas2.full_name full_name,
+       bas2.pay_countpermonth,
+       bas2.pay_amount pay_amount
+FROM bas
+JOIN
+    (SELECT DISTINCT(pay_year || '-' || pay_month) as fecha,
+            customer_id,
+	    full_name,
+	    COUNT(*) pay_countpermonth,
+	    SUM(pay_amount) AS pay_amount
+     FROM 
+     (SELECT DATE_PART('year', a.payment_date) pay_year,
+	     DATE_PART('month', a.payment_date) pay_month,
+	     b.first_name || ' ' || b.last_name full_name,
+	     a.customer_id,
+	     a.amount pay_amount
+     FROM payment as a
+         JOIN customer as b
+	     ON a.customer_id = b.customer_id) as tab1
+      GROUP BY 1, 2,3
+      ORDER BY full_name, fecha) AS bas2
+ON bas.customer_id = bas2.customer_id)
+
+SELECT
+    fecha,
+    full_name,
+    pay_countpermonth,
+    monthly_diff
+	FROM
+	(SELECT  a.fecha fecha,
+	    a.full_name full_name,
+	    a.pay_countpermonth pay_countpermonth,
+	    a.pay_amount amount,
+	    ABS(a.pay_amount - b.pay_amount) monthly_diff
+	FROM temp1 a
+	    LEFT JOIN temp1 b 
+                ON a.RowNumber = b.RowNumber+1) as temptable3
+WHERE fecha NOT IN ('2007-2')
+ORDER BY monthly_diff DESC
+
+----------------------------------------------------------------------------------------------------------------------------
+-- FIN
+----------------------------------------------------------------------------------------------------------------------------
